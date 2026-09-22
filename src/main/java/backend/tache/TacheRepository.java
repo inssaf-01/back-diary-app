@@ -1,8 +1,10 @@
 package backend.tache;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import backend.parametre.Parametre;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -10,6 +12,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface TacheRepository extends JpaRepository<Tache, UUID> {
+
+    List<Tache> findAllByIdInAndUtilisateurId(List<UUID> ids, UUID utilisateurId);
 
     @Query("""
                 SELECT t
@@ -28,4 +32,16 @@ public interface TacheRepository extends JpaRepository<Tache, UUID> {
     Optional<Tache> findByIdAndUtilisateurId(
             UUID id,
             UUID utilisateurId);
+
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+                UPDATE Tache t
+                SET t.statut = :statut
+                WHERE t.id = :tacheId
+                  AND t.utilisateur.id = :utilisateurId
+            """)
+    int updateStatut(
+            @Param("tacheId") UUID tacheId,
+            @Param("utilisateurId") UUID utilisateurId,
+            @Param("statut") Parametre statut);
 }

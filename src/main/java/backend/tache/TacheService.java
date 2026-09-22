@@ -13,6 +13,10 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional
@@ -45,6 +49,111 @@ public class TacheService {
                         utilisateur.getId(),
                         dateDebut,
                         dateFin)
+                .stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    @Transactional
+    public List<TacheResponse> updateStatuts(
+            Authentication authentication,
+            ModificationStatutsRequest request) {
+
+        AppUser utilisateur = getUtilisateurConnecte(authentication);
+
+        if (request == null
+                || request.modifications() == null
+                || request.modifications().isEmpty()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "La liste ne doit pas être vide");
+        }
+
+        Map<UUID, String> modifications = new LinkedHashMap<>();
+
+        for (ModificationStatutRequest modification : request.modifications()) {
+
+            if (modification == null
+                    || modification.tacheId() == null
+                    || modification.statutCode() == null
+                    || modification.statutCode().isBlank()
+                    || modification.statutCode().length() > 50) {
+
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "Modification invalide");
+            }
+
+            String code = modification.statutCode().trim().toUpperCase();
+
+            if (modifications.putIfAbsent(
+                    modification.tacheId(),
+                    code) != null) {
+
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "Une tâche apparaît plusieurs fois");
+            }
+        }
+
+        List<UUID> ids = List.copyOf(modifications.keySet());
+
+        // Vérifie que toutes les tâches appartiennent à l'utilisateur connecté.
+        List<Tache> taches = tacheRepository
+                .findAllByIdInAndUtilisateurId(
+                        ids,
+                        utilisateur.getId());
+
+        if (taches.size() != modifications.size()) {
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND,
+                    "Une ou plusieurs tâches sont introuvables");
+        }
+
+        // Charge tous les statuts demandés en une seule requête.
+        Map<String, Parametre> statuts = parametreRepository
+                .findByCategorieAndCodeIn(
+                        "STATUT_TACHE",
+                        modifications.values())
+                .stream()
+                .collect(Collectors.toMap(
+                        Parametre::getCode,
+                        Function.identity()));
+
+        // Valide tous les statuts avant toute modification.
+        for (String code : modifications.values()) {
+
+            Parametre statut = statuts.get(code);
+
+            if (statut == null || !statut.isActif()) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "Statut invalide ou désactivé");
+            }
+        }
+
+        // Mise à jour ciblée : uniquement statut_id.
+        for (Map.Entry<UUID, String> modification : modifications.entrySet()) {
+
+            Parametre statut = statuts.get(modification.getValue());
+
+            int updated = tacheRepository.updateStatut(
+                    modification.getKey(),
+                    utilisateur.getId(),
+                    statut);
+            if (updated != 1) {
+                throw new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Une tâche n'est plus disponible");
+            }
+        }
+
+        // Recharge uniquement les tâches concernées pour retourner la réponse.
+        List<Tache> tachesModifiees = tacheRepository
+                .findAllByIdInAndUtilisateurId(
+                        ids,
+                        utilisateur.getId());
+
+        return tachesModifiees
                 .stream()
                 .map(this::toResponse)
                 .toList();

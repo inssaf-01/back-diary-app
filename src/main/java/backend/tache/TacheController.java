@@ -1,6 +1,7 @@
 package backend.tache;
 
 import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -41,6 +42,13 @@ public class TacheController {
                 authentication,
                 dateDebut,
                 dateFin);
+    }
+
+    @PatchMapping("/statuts")
+    public List<TacheResponse> updateStatuts(
+            Authentication authentication,
+            @Valid @RequestBody ModificationStatutsRequest request) {
+        return tacheService.updateStatuts(authentication, request);
     }
 
     @GetMapping("/{id}")
