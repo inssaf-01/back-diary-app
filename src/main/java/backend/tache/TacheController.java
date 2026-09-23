@@ -37,7 +37,9 @@ public class TacheController {
 
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime dateDebut,
 
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime dateFin) {
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime dateFin,
+            @RequestParam(defaultValue = "false") boolean vueComplete) {
+        if (vueComplete) return tacheService.findAgenda(authentication, dateDebut, dateFin);
         return tacheService.findCalendrier(
                 authentication,
                 dateDebut,

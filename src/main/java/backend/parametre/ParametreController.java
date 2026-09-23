@@ -20,11 +20,11 @@ public class ParametreController {
 
     @GetMapping
     public List<ParametreResponse> findByCategorie(
-            @RequestParam String categorie) {
-        return parametreRepository
-                .findByCategorieAndActifTrueOrderByOrdreAsc(
-                        categorie.trim().toUpperCase())
-                .stream()
+            @RequestParam(required = false) String categorie) {
+        var parametres = categorie == null || categorie.isBlank()
+                ? parametreRepository.findByActifTrueOrderByCategorieAscOrdreAscIdAsc()
+                : parametreRepository.findByCategorieAndActifTrueOrderByOrdreAsc(categorie.trim().toUpperCase());
+        return parametres.stream()
                 .map(parametre -> new ParametreResponse(
                         parametre.getId(),
                         parametre.getCategorie(),

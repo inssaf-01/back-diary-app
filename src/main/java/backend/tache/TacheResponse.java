@@ -8,11 +8,11 @@ public record TacheResponse(
 
         UUID id,
 
-        ParametreInfo typeTache,
+        Long typeTacheId,
 
-        ParametreInfo statut,
+        Long statutId,
 
-        ParametreInfo priorite,
+        Long prioriteId,
 
         String titre,
 
@@ -30,9 +30,4 @@ public record TacheResponse(
 
 ) {
 
-    public record ParametreInfo(
-            Long id,
-            String code,
-            String libelle) {
-    }
 }

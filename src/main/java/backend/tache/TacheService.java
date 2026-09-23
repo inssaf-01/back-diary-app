@@ -54,6 +54,13 @@ public class TacheService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<TacheResponse> findAgenda(Authentication authentication, OffsetDateTime dateDebut, OffsetDateTime dateFin) {
+        verifierPeriode(dateDebut, dateFin);
+        var utilisateur = getUtilisateurConnecte(authentication);
+        return tacheRepository.findAgenda(utilisateur.getId(), dateDebut, dateFin).stream().map(this::toResponse).toList();
+    }
+
     @Transactional
     public List<TacheResponse> updateStatuts(
             Authentication authentication,
@@ -69,26 +76,23 @@ public class TacheService {
                     "La liste ne doit pas être vide");
         }
 
-        Map<UUID, String> modifications = new LinkedHashMap<>();
+        Map<UUID, Long> modifications = new LinkedHashMap<>();
 
         for (ModificationStatutRequest modification : request.modifications()) {
 
             if (modification == null
                     || modification.tacheId() == null
-                    || modification.statutCode() == null
-                    || modification.statutCode().isBlank()
-                    || modification.statutCode().length() > 50) {
+                    || modification.statutId() == null
+                    || modification.statutId() <= 0) {
 
                 throw new ResponseStatusException(
                         HttpStatus.BAD_REQUEST,
                         "Modification invalide");
             }
 
-            String code = modification.statutCode().trim().toUpperCase();
-
             if (modifications.putIfAbsent(
                     modification.tacheId(),
-                    code) != null) {
+                    modification.statutId()) != null) {
 
                 throw new ResponseStatusException(
                         HttpStatus.BAD_REQUEST,
@@ -111,21 +115,19 @@ public class TacheService {
         }
 
         // Charge tous les statuts demandés en une seule requête.
-        Map<String, Parametre> statuts = parametreRepository
-                .findByCategorieAndCodeIn(
-                        "STATUT_TACHE",
-                        modifications.values())
+        Map<Long, Parametre> statuts = parametreRepository
+                .findAllById(modifications.values())
                 .stream()
                 .collect(Collectors.toMap(
-                        Parametre::getCode,
+                        Parametre::getId,
                         Function.identity()));
 
         // Valide tous les statuts avant toute modification.
-        for (String code : modifications.values()) {
+        for (Long id : modifications.values()) {
 
-            Parametre statut = statuts.get(code);
+            Parametre statut = statuts.get(id);
 
-            if (statut == null || !statut.isActif()) {
+            if (statut == null || !statut.isActif() || !"STATUT_TACHE".equals(statut.getCategorie())) {
                 throw new ResponseStatusException(
                         HttpStatus.BAD_REQUEST,
                         "Statut invalide ou désactivé");
@@ -133,7 +135,7 @@ public class TacheService {
         }
 
         // Mise à jour ciblée : uniquement statut_id.
-        for (Map.Entry<UUID, String> modification : modifications.entrySet()) {
+        for (Map.Entry<UUID, Long> modification : modifications.entrySet()) {
 
             Parametre statut = statuts.get(modification.getValue());
 
@@ -328,9 +330,9 @@ public class TacheService {
     private TacheResponse toResponse(Tache tache) {
         return new TacheResponse(
                 tache.getId(),
-                toParametreInfo(tache.getTypeTache()),
-                toParametreInfo(tache.getStatut()),
-                toParametreInfo(tache.getPriorite()),
+                tache.getTypeTache().getId(),
+                tache.getStatut().getId(),
+                tache.getPriorite() == null ? null : tache.getPriorite().getId(),
                 tache.getTitre(),
                 tache.getDetails(),
                 tache.getDateDebut(),
@@ -340,15 +342,4 @@ public class TacheService {
                 tache.getUpdatedAt());
     }
 
-    private TacheResponse.ParametreInfo toParametreInfo(
-            Parametre parametre) {
-        if (parametre == null) {
-            return null;
-        }
-
-        return new TacheResponse.ParametreInfo(
-                parametre.getId(),
-                parametre.getCode(),
-                parametre.getLibelle());
-    }
 }

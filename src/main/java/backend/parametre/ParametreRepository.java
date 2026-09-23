@@ -7,6 +7,8 @@ import java.util.List;
 public interface ParametreRepository
         extends JpaRepository<Parametre, Long> {
 
+    List<Parametre> findByActifTrueOrderByCategorieAscOrdreAscIdAsc();
+
     List<Parametre> findByCategorieAndCodeIn(String categorie, java.util.Collection<String> codes);
 
     List<Parametre> findByCategorieAndActifTrueOrderByOrdreAsc(
