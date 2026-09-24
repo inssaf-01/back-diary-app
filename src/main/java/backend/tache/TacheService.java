@@ -36,6 +36,21 @@ public class TacheService {
     }
 
     @Transactional(readOnly = true)
+    public TachePageResponse findAccueil(Authentication authentication, OffsetDateTime dateDebut, OffsetDateTime dateFin, boolean inclureRetard, int page, int size) {
+        verifierPeriode(dateDebut, dateFin);
+        var utilisateur = getUtilisateurConnecte(authentication);
+        if (page < 0 || size < 1 || size > 50) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Pagination invalide");
+        var result = tacheRepository.findAccueil(utilisateur.getId(), dateDebut, dateFin, inclureRetard, org.springframework.data.domain.PageRequest.of(page, size));
+        return new TachePageResponse(result.getContent().stream().map(this::toResponse).toList(), result.getTotalElements(), result.getTotalPages(), result.getNumber(), result.getSize());
+    }
+
+    @Transactional(readOnly = true)
+    public List<TacheResponse> findActives(Authentication authentication) {
+        var utilisateur = getUtilisateurConnecte(authentication);
+        return tacheRepository.findActives(utilisateur.getId()).stream().map(this::toResponse).toList();
+    }
+
+    @Transactional(readOnly = true)
     public List<TacheResponse> findCalendrier(
             Authentication authentication,
             OffsetDateTime dateDebut,

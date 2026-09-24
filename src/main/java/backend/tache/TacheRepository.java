@@ -15,6 +15,14 @@ import java.util.UUID;
 public interface TacheRepository extends JpaRepository<Tache, UUID> {
 
     @EntityGraph(attributePaths = {"typeTache", "statut", "priorite"})
+    @Query("SELECT t FROM Tache t WHERE t.utilisateur.id = :utilisateurId AND t.statut.code IN ('A_FAIRE', 'EN_COURS') AND t.dateDebut < :dateFin AND (t.dateDebut >= :dateDebut OR :inclureRetard = true) ORDER BY t.dateDebut ASC, t.id ASC")
+    org.springframework.data.domain.Page<Tache> findAccueil(@Param("utilisateurId") UUID utilisateurId, @Param("dateDebut") OffsetDateTime dateDebut, @Param("dateFin") OffsetDateTime dateFin, @Param("inclureRetard") boolean inclureRetard, org.springframework.data.domain.Pageable pageable);
+
+    @EntityGraph(attributePaths = {"typeTache", "statut", "priorite"})
+    @Query("SELECT t FROM Tache t WHERE t.utilisateur.id = :utilisateurId AND t.statut.code IN ('A_FAIRE', 'EN_COURS') ORDER BY t.dateDebut ASC, t.id ASC")
+    List<Tache> findActives(@Param("utilisateurId") UUID utilisateurId);
+
+    @EntityGraph(attributePaths = {"typeTache", "statut", "priorite"})
     @Query("""
             SELECT t FROM Tache t
             WHERE t.utilisateur.id = :utilisateurId
@@ -36,7 +44,7 @@ public interface TacheRepository extends JpaRepository<Tache, UUID> {
                 WHERE t.utilisateur.id = :utilisateurId
                   AND t.dateDebut >= :dateDebut
                   AND t.dateDebut < :dateFin
-                  AND t.statut.code NOT IN ('TERMINEE', 'ANNULEE')
+                  AND t.statut.code IN ('A_FAIRE', 'EN_COURS')
                 ORDER BY t.dateDebut ASC
             """)
     List<Tache> findCalendrier(

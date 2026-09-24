@@ -31,6 +31,20 @@ public class TacheController {
         this.tacheService = tacheService;
     }
 
+    @GetMapping("/accueil")
+    public TachePageResponse getAccueil(Authentication authentication,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime dateDebut,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime dateFin,
+            @RequestParam(defaultValue = "true") boolean inclureRetard,
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "3") int size) {
+        return tacheService.findAccueil(authentication, dateDebut, dateFin, inclureRetard, page, size);
+    }
+
+    @GetMapping("/actives")
+    public List<TacheResponse> getActives(Authentication authentication) {
+        return tacheService.findActives(authentication);
+    }
+
     @GetMapping("/calendrier")
     public List<TacheResponse> getCalendrier(
             Authentication authentication,

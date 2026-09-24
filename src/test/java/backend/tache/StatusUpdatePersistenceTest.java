@@ -82,6 +82,92 @@ class StatusUpdatePersistenceTest {
         return task;
     }
 
+    @Test void homeIncludesPastAndDistantActiveTasksOnlyForTheOwner() {
+        var owner = user();
+        var type = parameter("TYPE_TACHE", "TACHE");
+        var todo = parameter("STATUT_TACHE", "A_FAIRE");
+        var done = parameter("STATUT_TACHE", "TERMINEE");
+        var cancelled = parameter("STATUT_TACHE", "ANNULEE");
+        var past = task(owner, type, todo);
+        past.setDateDebut(OffsetDateTime.now().minusYears(1));
+        var future = task(owner, type, todo);
+        future.setDateDebut(OffsetDateTime.now().plusMonths(3));
+        task(owner, type, done);
+        task(owner, type, cancelled);
+        var other = new AppUser();
+        other.setUsername("other"); other.setEmail("other@example.test");
+        other.setPasswordHash("unused"); other.setRole(owner.getRole()); em.persist(other);
+        task(other, type, todo);
+        var auth = new UsernamePasswordAuthenticationToken(owner.getId().toString(), null, List.of());
+        assertEquals(List.of(past.getId(), future.getId()), service.findActives(auth).stream().map(TacheResponse::id).toList());
+        var start = OffsetDateTime.now().withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0).withNano(0);
+        var current = task(owner, type, todo);
+        current.setDateDebut(start.plusDays(1));
+        var boundary = task(owner, type, todo);
+        boundary.setDateDebut(start.plusMonths(1));
+        assertEquals(List.of(current.getId()), service.findAccueil(auth, start, start.plusMonths(1), false, 0, 50).content().stream().map(TacheResponse::id).toList());
+        assertEquals(List.of(past.getId(), current.getId()), service.findAccueil(auth, start, start.plusMonths(1), true, 0, 50).content().stream().map(TacheResponse::id).toList());
+
+    }
+
+    @Test void octoberPagesIncludeOldUnfinishedTasksWithAnExactTotal() {
+        var owner = user();
+        var type = parameter("TYPE_TACHE", "TACHE");
+        var todo = parameter("STATUT_TACHE", "A_FAIRE");
+        var progress = parameter("STATUT_TACHE", "EN_COURS");
+        var done = parameter("STATUT_TACHE", "TERMINEE");
+        var start = OffsetDateTime.parse("2026-10-01T00:00:00+01:00");
+        var old = task(owner, type, todo); old.setDateDebut(start.minusYears(2));
+        var september = task(owner, type, progress); september.setDateDebut(start.minusHours(1));
+        var october = task(owner, type, todo); october.setDateDebut(start.plusMonths(1).minusSeconds(1));
+        task(owner, type, todo).setDateDebut(start.plusMonths(1));
+        task(owner, type, done).setDateDebut(start.minusDays(1));
+        var auth = new UsernamePasswordAuthenticationToken(owner.getId().toString(), null, List.of());
+        var first = service.findAccueil(auth, start, start.plusMonths(1), true, 0, 2);
+        var second = service.findAccueil(auth, start, start.plusMonths(1), true, 1, 2);
+        assertEquals(3, first.totalElements());
+        assertEquals(2, first.totalPages());
+        assertEquals(List.of(old.getId(), september.getId()), first.content().stream().map(TacheResponse::id).toList());
+        assertEquals(List.of(october.getId()), second.content().stream().map(TacheResponse::id).toList());
+        assertEquals(3, second.totalElements());
+        assertThrows(ResponseStatusException.class, () -> service.findAccueil(auth, start, start.plusMonths(1), true, 0, 51));
+        assertThrows(ResponseStatusException.class, () -> service.findAccueil(auth, start, start.plusMonths(1), true, -1, 2));
+    }
+
+    @Test void september23ReturnsFourEligibleTasksThroughHttp() throws Exception {
+        var owner = user();
+        var type = parameter("TYPE_TACHE", "TACHE");
+        var todo = parameter("STATUT_TACHE", "A_FAIRE");
+        var progress = parameter("STATUT_TACHE", "EN_COURS");
+        var done = parameter("STATUT_TACHE", "TERMINEE");
+        var cancelled = parameter("STATUT_TACHE", "ANNULEE");
+        var start = OffsetDateTime.parse("2026-09-23T00:00:00+01:00");
+        var titles = List.of("reunion ajout xx", "[TEST CALENDRIER] Atelier Angular", "test ajout 2", "[TEST CALENDRIER] Courses hebdomadaires");
+        int[] minutes = {0, 600, 900, 1110};
+        for (int i = 0; i < 4; i++) {
+            var row = task(owner, type, i == 2 ? todo : progress);
+            row.setTitre(titles.get(i)); row.setDateDebut(start.plusMinutes(minutes[i])); row.setTouteLaJournee(i == 0);
+        }
+        for (int i = 0; i < 5; i++) task(owner, type, i == 4 ? cancelled : done).setDateDebut(start.plusHours(12));
+        var other = new AppUser(); other.setUsername("other"); other.setEmail("other@example.test");
+        other.setPasswordHash("unused"); other.setRole(owner.getRole()); em.persist(other);
+        for (int i = 0; i < 2; i++) task(other, type, progress).setDateDebut(start.plusHours(12));
+        task(owner, type, todo).setDateDebut(start.plusDays(1));
+        task(owner, type, todo).setDateDebut(start.minusSeconds(1));
+        em.flush(); em.clear();
+        var auth = new UsernamePasswordAuthenticationToken(owner.getId().toString(), null, List.of());
+        assertEquals(titles, service.findCalendrier(auth, start, start.plusDays(1)).stream().map(TacheResponse::titre).toList());
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new TacheController(service)).build();
+        for (var endpoint : List.of("calendrier", "accueil")) {
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/taches/" + endpoint)
+                    .principal(auth).param("dateDebut", start.toString()).param("dateFin", start.plusDays(1).toString()).param("size", "50").param("inclureRetard", "false"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath(endpoint.equals("accueil") ? "$.content.length()" : "$.length()").value(4))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath(endpoint.equals("accueil") ? "$.content[0].touteLaJournee" : "$[0].touteLaJournee").value(true))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath(endpoint.equals("accueil") ? "$.content[3].titre" : "$[3].titre").value(titles.get(3)));
+        }
+    }
+
     @Test void returnsFreshStatusesAfterBulkUpdateInTheSamePersistenceContext() {
         var owner = user();
         var type = parameter("TYPE_TACHE", "TACHE");
