@@ -87,6 +87,7 @@ public class CorsConfig {
                                         "Authentification obligatoire")))
 
                 .authorizeHttpRequests(authorize -> authorize
+                        .dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ERROR).permitAll()
                         .requestMatchers(
                                 HttpMethod.OPTIONS,
                                 "/**")
